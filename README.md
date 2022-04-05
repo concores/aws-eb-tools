@@ -31,3 +31,17 @@ $ ./get_instances.sh <EB_ENV_NAME>
 引数：
 
 - EB_ENV_NAME: EB環境名（ `get_eb_envs.sh` で取得可能）
+
+### connect_to_instance.sh
+
+対象インスタンスにSSH（AWS SSMを利用して）で接続する。
+
+呼び出し方：
+
+```
+$ ./connect_to_instance.sh <INSTANCE_ID>
+```
+
+引数：
+
+- INSTANCE_ID: インスタンスID（ `get_instances.sh` で取得可能）
