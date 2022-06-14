@@ -5,6 +5,8 @@
 1. `aws-vault` のインストールと設定完了
 2. `aws-vault` 環境内で実行
 
+test
+
 ## コマンド
 
 ### get_eb_envs.sh
