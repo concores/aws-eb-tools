@@ -3,9 +3,8 @@
 ## 前提条件
 
 1. `aws-vault` のインストールと設定完了
-2. `aws-vault` 環境内で実行
-
-test
+2. `Session Managerプラグイン` のインストール [詳細](https://docs.aws.amazon.com/ja_jp/systems-manager/latest/userguide/session-manager-working-with-install-plugin.html)
+3. `aws-vault` 環境内で実行
 
 ## コマンド
 
