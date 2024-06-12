@@ -8,7 +8,24 @@
 
 ## コマンド
 
-### get_eb_envs.sh
+### connect.sh
+
+対話式でインスタンスに接続する。
+ステップ１：EB環境を調べて、出力する。
+ステップ２：対象EB環境のインスタンスIDを取得する。
+ステップ３：対象インスタンスにSSH（AWS SSMを利用して）で接続する。
+
+呼び出し方：
+
+```
+$ ./get_eb_envs.sh
+```
+
+引数：なし
+
+## 単体で動かす場合
+
+### 01_get_eb_envs.sh
 
 EB環境を調べて、出力する。
 
@@ -20,7 +37,7 @@ $ ./get_eb_envs.sh
 
 引数：なし
 
-### get_instances.sh
+### 02_get_instances.sh
 
 対象EB環境のインスタンスIDを取得する。
 
@@ -34,7 +51,7 @@ $ ./get_instances.sh <EB_ENV_NAME>
 
 - EB_ENV_NAME: EB環境名（ `get_eb_envs.sh` で取得可能）
 
-### connect_to_instance.sh
+### 03_connect_to_instance.sh
 
 対象インスタンスにSSH（AWS SSMを利用して）で接続する。
 
