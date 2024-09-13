@@ -57,9 +57,14 @@ if [ -z "$selected_task" ]; then
 fi
 echo "Selected task: $selected_task"
 
-# Step 4: コンテナ名の入力
-read -p "Enter the container name (e.g., backend): " container_name
+# Step 4: コンテナ名の取得
+container_name=$(aws ecs describe-tasks --cluster "$selected_cluster" --tasks $selected_task --query "tasks[0].containers[0].name" --output text)
+if [ -z "$container_name" ]; then
+    echo "Failed to get container."
+    exit 1
+fi
+
+echo "Target container: $container_name"
 
 # Step 5: execute-commandでコンテナにシェル接続
-echo "Executing command on task $selected_task in container $container_name..."
 aws ecs execute-command --task "$selected_task" --interactive --cluster "$selected_cluster" --container "$container_name" --command "/bin/sh"
