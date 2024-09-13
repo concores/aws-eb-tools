@@ -57,14 +57,21 @@ if [ -z "$selected_task" ]; then
 fi
 echo "Selected task: $selected_task"
 
-# Step 4: コンテナ名の取得
-container_name=$(aws ecs describe-tasks --cluster "$selected_cluster" --tasks $selected_task --query "tasks[0].containers[0].name" --output text)
-if [ -z "$container_name" ]; then
+# Step 4: タスクに紐づくコンテナ一覧の取得
+container_names=$(aws ecs describe-tasks --cluster "$selected_cluster" --tasks $selected_task --query "tasks[0].containers[*].name" --output text)
+if [ -z "$container_names" ]; then
     echo "Failed to get container."
     exit 1
 fi
 
-echo "Target container: $container_name"
+# コンテナ一覧を表示して選択 (fzf)
+selected_container=$(echo "$container_names" | xargs -n1 | fzf --prompt="Select a container: ")
+
+if [ -z "$selected_container" ]; then
+    echo "No container selected."
+    exit 1
+fi
+echo "Selected container: $selected_container"
 
 # Step 5: execute-commandでコンテナにシェル接続
-aws ecs execute-command --task "$selected_task" --interactive --cluster "$selected_cluster" --container "$container_name" --command "/bin/sh"
+aws ecs execute-command --task "$selected_task" --interactive --cluster "$selected_cluster" --container "$selected_container" --command "/bin/sh"
