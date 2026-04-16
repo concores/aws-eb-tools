@@ -44,7 +44,10 @@ echo "アカウント: $ACCOUNT_ID  |  プロファイル: $AWS_VAULT" >&2
 # ── 現在のアカウントに対応するトンネル定義を抽出 ─────────────────────────────
 # TSV 形式で出力: name\ttarget\thost\tport\tlocal_port
 
-mapfile -t ENTRIES < <(
+ENTRIES=()
+while IFS= read -r line; do
+    ENTRIES+=("$line")
+done < <(
     jq -r --arg account "$ACCOUNT_ID" \
         '.[] | select(.account == $account) | .tunnels[] |
          [.name, .target, .host, (.port|tostring), (.local_port|tostring)] | @tsv' \
