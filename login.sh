@@ -9,8 +9,7 @@ ENVIRONMENTS=(
 show_usage() {
     echo "Usage: $0 [eb_env_or_cycle]"
     echo "  eb_env_or_cycle: EB環境名 または CycleEnvタグの値（例: red, green, blue）"
-    echo ""
-    echo "省略した場合は、一覧から選択するプロンプトが表示されます。"
+    echo "                   省略した場合は、一覧から選択するプロンプトが表示されます。"
 }
 
 EB_ENV_PARAM="$1"
