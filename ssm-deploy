@@ -1,0 +1,2 @@
+#!/usr/bin/env bash
+aws ssm start-session --target i-05a9b7625607f1926
