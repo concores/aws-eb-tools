@@ -6,7 +6,7 @@ LOCAL_PORT="${OS_TUNNEL_LOCAL_PORT:-10800}"
 
 # ── 依存コマンドの確認 ───────────────────────────────────────────────────────
 
-for cmd in aws fzf jq; do
+for cmd in aws fzf jq docker; do
     if ! command -v "$cmd" &>/dev/null; then
         echo "エラー: '$cmd' がインストールされていません。" >&2
         exit 1
@@ -169,6 +169,9 @@ REGION=$(echo "$VPC_ENDPOINT" | awk -F'.' '{print $2}')
 # SSM トンネルは LOCAL_PORT+1 で受け、プロキシが LOCAL_PORT に公開する
 TUNNEL_PORT=$((LOCAL_PORT + 1))
 
+# SigV4 プロキシコンテナ名（PID を付与し多重起動時の衝突を回避）
+PROXY_CONTAINER_NAME="os-tunnel-proxy-$$"
+
 # ── 接続情報の表示 ───────────────────────────────────────────────────────────
 
 echo "" >&2
@@ -189,10 +192,14 @@ SSM_PID=$!
 
 cleanup() {
     echo "" >&2
-    echo "トンネルを閉じています..." >&2
+    echo "トンネルとプロキシを閉じています..." >&2
+    docker stop "$PROXY_CONTAINER_NAME" &>/dev/null || true
     kill "$SSM_PID" 2>/dev/null || true
 }
 trap cleanup EXIT INT TERM
+
+# 前回異常終了時の残骸があれば削除しておく
+docker rm -f "$PROXY_CONTAINER_NAME" &>/dev/null || true
 
 # SSM トンネルの確立を待機
 echo "SSM トンネルの確立を待機中..." >&2
@@ -201,82 +208,24 @@ for _ in $(seq 1 15); do
     sleep 1
 done
 
-# ── SigV4 署名プロキシを起動（botocore で署名し SSM トンネルへ転送）────────────
+# ── SigV4 署名プロキシを起動（aws-sigv4-proxy コンテナで署名し SSM トンネルへ転送）───
+# --add-host で VPC_ENDPOINT を 127.0.0.1 に解決させ、--host 経由で SSM トンネルへ
+# 到達させつつ、--sign-host で TLS SNI と署名の Host を実際のドメイン名に保つ。
 
-python3 - "$LOCAL_PORT" "$TUNNEL_PORT" "$VPC_ENDPOINT" "$REGION" <<'PYEOF'
-import sys, re
-from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
-import urllib3
-from botocore.auth import SigV4Auth
-from botocore.awsrequest import AWSRequest
-from botocore.session import Session as BotocoreSession
+docker run -d --rm \
+    --network host \
+    --add-host "${VPC_ENDPOINT}:127.0.0.1" \
+    --name "$PROXY_CONTAINER_NAME" \
+    -e AWS_ACCESS_KEY_ID \
+    -e AWS_SECRET_ACCESS_KEY \
+    -e AWS_SESSION_TOKEN \
+    public.ecr.aws/aws-observability/aws-sigv4-proxy:1.12 \
+    --port "127.0.0.1:${LOCAL_PORT}" \
+    --name es \
+    --region "$REGION" \
+    --host "${VPC_ENDPOINT}:${TUNNEL_PORT}" \
+    --sign-host "$VPC_ENDPOINT" >/dev/null
 
-LISTEN_PORT = int(sys.argv[1])
-TUNNEL_PORT  = int(sys.argv[2])
-OS_HOST      = sys.argv[3]
-REGION       = sys.argv[4]
+echo "SigV4 プロキシ起動: http://localhost:${LOCAL_PORT}/_dashboards" >&2
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-pool = urllib3.HTTPSConnectionPool(
-    '127.0.0.1', port=TUNNEL_PORT,
-    cert_reqs='CERT_NONE', assert_hostname=False,
-    maxsize=20,
-)
-credentials = BotocoreSession().get_credentials()
-
-SKIP_HEADERS = {
-    'transfer-encoding', 'connection',
-    'content-security-policy', 'content-security-policy-report-only',
-    'x-frame-options',
-}
-
-def sanitize_cookie(value):
-    # ブラウザが HTTP localhost でクッキーを受け入れるよう属性を調整する
-    value = re.sub(r';\s*Secure', '', value, flags=re.IGNORECASE)
-    value = re.sub(r';\s*Domain=[^;]+', '', value, flags=re.IGNORECASE)
-    value = re.sub(r'SameSite=None', 'SameSite=Lax', value, flags=re.IGNORECASE)
-    return value
-
-class ProxyHandler(BaseHTTPRequestHandler):
-    def log_message(self, fmt, *args):
-        pass
-
-    def proxy(self):
-        length = int(self.headers.get('Content-Length', 0))
-        body = self.rfile.read(length) if length else None
-
-        aws_req = AWSRequest(
-            method=self.command,
-            url=f"https://{OS_HOST}{self.path}",
-            data=body,
-        )
-        SigV4Auth(credentials, 'es', REGION).add_auth(aws_req)
-
-        headers = dict(aws_req.headers)
-        headers['Host'] = OS_HOST
-        headers['osd-xsrf'] = 'true'
-
-        resp = pool.urlopen(
-            self.command, self.path,
-            headers=headers, body=body,
-            redirect=False, preload_content=False, decode_content=False,
-        )
-
-        self.send_response(resp.status)
-        for k, v in resp.headers.items():
-            if k.lower() not in SKIP_HEADERS:
-                if k.lower() == 'set-cookie':
-                    self.send_header(k, sanitize_cookie(v))
-                else:
-                    self.send_header(k, v)
-        self.end_headers()
-
-        while chunk := resp.read(65536):
-            self.wfile.write(chunk)
-        resp.release_conn()
-
-    do_GET = do_POST = do_PUT = do_DELETE = do_HEAD = do_OPTIONS = do_PATCH = proxy
-
-print(f"プロキシ起動: http://localhost:{LISTEN_PORT}/_dashboards", flush=True)
-ThreadingHTTPServer(('127.0.0.1', LISTEN_PORT), ProxyHandler).serve_forever()
-PYEOF
+docker logs -f "$PROXY_CONTAINER_NAME"
